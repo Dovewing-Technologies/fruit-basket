@@ -1,0 +1,19 @@
+myapp:
+  testproperty: "Example Value"
+server:
+  port: 8080
+  
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "*"  
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: update
+    database-platform: org.hibernate.dialect.MySQL5InnoDBDialect
+  datasource:
+    url: ${mysql.url}
+    username: ${mysql.username}
+    password: ${mysql.password}

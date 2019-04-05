@@ -1,0 +1,148 @@
+---  
+apiVersion: "extensions/v1beta1"
+kind: "Deployment"
+metadata:
+  name: "vault"
+  namespace: "default"
+  labels:
+    app: "vault"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: "vault"
+  template:
+    metadata:
+      labels:
+        app: "vault"
+    spec:
+      containers:
+      - name: "vault"
+        image: "gcr.io/photily/vault"
+        ports:
+        - containerPort: 8200
+        env:
+        - name: "VAULT_DEV_ROOT_TOKEN_ID"
+          valueFrom:
+            secretKeyRef:
+              name: fruitbasket-secrets
+              key: vault-token
+---
+apiVersion: "autoscaling/v2beta1"
+kind: "HorizontalPodAutoscaler"
+metadata:
+  name: "fruitbasket-hpa"
+  namespace: "default"
+  labels:
+    app: "fruitbasket"
+spec:
+  scaleTargetRef:
+    kind: "Deployment"
+    name: "fruitbasket"
+    apiVersion: "apps/v1beta1"
+  minReplicas: 3
+  maxReplicas: 5
+  metrics:
+  - type: "Resource"
+    resource:
+      name: "cpu"
+      targetAverageUtilization: 80
+---
+apiVersion: "v1"
+kind: "Service"
+metadata:
+  name: "vault-service"
+  namespace: "default"
+  labels:
+    app: "vault"
+spec:
+  ports:
+  - protocol: "TCP"
+    port: 8200
+    targetPort: 8200
+  selector:
+    app: "vault"
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: vault-secrets
+spec:
+  template:
+    spec:
+      containers:
+      - name: "vault-secrets"
+        image: "gcr.io/photily/vault-secrets"
+        env:
+        - name: "VAULT_TOKEN"
+          valueFrom:
+            secretKeyRef:
+                name: fruitbasket-secrets
+                key: vault-token
+        - name: "VAULT_ADDR"
+          value: http://$(VAULT_SERVICE_SERVICE_HOST):$(VAULT_SERVICE_SERVICE_PORT)
+        - name: "MYSQL_USERNAME"
+          valueFrom:
+            secretKeyRef:
+                name: fruitbasket-secrets
+                key: mysql-username
+        - name: "MYSQL_PASSWORD"
+          valueFrom:
+            secretKeyRef:
+                name: fruitbasket-secrets
+                key: mysql-password
+        - name: "MYSQL_URL"
+          valueFrom:
+            secretKeyRef:
+                name: fruitbasket-secrets
+                key: mysql-url
+      restartPolicy: Never
+---
+apiVersion: "extensions/v1beta1"
+kind: "Deployment"
+metadata:
+  name: "fruitbasket"
+  namespace: "default"
+  labels:
+    app: "fruitbasket"
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: "fruitbasket"
+  template:
+    metadata:
+      labels:
+        app: "fruitbasket"
+    spec:
+      containers:
+      - name: "fruitbasket"
+        image: "gcr.io/photily/fruitbasket"
+        ports:
+        - containerPort: 8080
+        env:
+        - name: "VAULT_ADDR"
+          value: http://$(VAULT_SERVICE_SERVICE_HOST):$(VAULT_SERVICE_SERVICE_PORT)
+        - name: "VAULT_TOKEN"
+          valueFrom:
+            secretKeyRef:
+              name: fruitbasket-secrets
+              key: vault-token
+---
+apiVersion: "v1"
+kind: "Service"
+metadata:
+  name: "fruitbasket-service"
+  namespace: "default"
+  labels:
+    app: "fruitbasket"
+spec:
+  ports:
+  - protocol: "TCP"
+    port: 8080
+    targetPort: 8080
+  selector:
+    app: "fruitbasket"
+  type: "LoadBalancer"
+  loadBalancerIP: ""
+
